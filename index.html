@@ -1,0 +1,366 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101923">
+<title>Ajedrez Maestro IA</title>
+<style>
+:root{--bg:#101923;--panel:#192635;--line:#304253;--gold:#e4b65d;--text:#f1f5f9;--muted:#a9bac9;--green:#57d69a;--red:#ff7777}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,Arial,sans-serif}
+header{padding:18px;text-align:center;border-bottom:1px solid var(--line);background:#111d29}
+header h1{margin:0;color:var(--gold);font-size:25px}
+header p{margin:6px 0 0;color:var(--muted);font-size:13px}
+main{max-width:1150px;margin:auto;padding:16px;display:grid;grid-template-columns:minmax(280px,600px) minmax(280px,1fr);gap:16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;min-width:0}
+.board{width:100%;max-width:600px;margin:auto;aspect-ratio:1;display:grid;grid-template-columns:repeat(8,1fr);border:3px solid #8b7250;border-radius:4px;overflow:hidden}
+.square{border:0;padding:0;display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer;font-family:"Arial Unicode MS",serif;font-size:clamp(25px,6.3vw,58px);line-height:1;aspect-ratio:1}
+.light{background:#eedbb8}.dark{background:#8a6245}
+.square.selected{box-shadow:inset 0 0 0 5px #f5d74f}
+.square.last{background:#c7bc54}
+.square.hint{box-shadow:inset 0 0 0 4px #43d7b1}
+.square:focus-visible{outline:3px solid #42d9ff;z-index:2}
+.coord{position:absolute;bottom:2px;left:3px;font-size:10px;font-family:Arial,sans-serif;color:#111;opacity:.65}
+.topline{display:flex;justify-content:space-between;gap:8px;align-items:center;margin:10px 0;color:var(--muted);font-size:13px}
+button,select{background:#243749;color:var(--text);border:1px solid #40566b;padding:10px 12px;border-radius:8px;cursor:pointer;font-size:14px}
+button:hover{border-color:var(--gold)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.primary{background:#986d27;border-color:var(--gold);color:white}
+h2{font-size:17px;margin:0 0 12px;color:var(--gold)}
+h3{font-size:14px;margin:14px 0 6px}
+#status{font-size:14px;line-height:1.5;color:var(--green)}
+#coach{line-height:1.65;font-size:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+#moves{max-height:170px;overflow:auto;display:flex;flex-wrap:wrap;gap:6px}
+.move{padding:5px 8px;font-size:12px}
+.move.active{background:#886326;border-color:var(--gold)}
+#engineStatus{color:var(--muted);font-size:12px;line-height:1.5}
+.small{font-size:12px;color:var(--muted);line-height:1.5}
+.stat{padding:10px;border:1px solid var(--line);border-radius:8px;margin-top:10px}
+#eval{font-size:21px;font-weight:bold;color:var(--gold)}
+input[type=range]{width:100%;accent-color:var(--gold)}
+footer{text-align:center;padding:16px;color:var(--muted);font-size:12px}
+@media(max-width:760px){main{grid-template-columns:1fr;padding:9px;gap:10px}.panel{padding:10px}.square{font-size:clamp(25px,10vw,53px)}header h1{font-size:22px}}
+</style>
+</head>
+<body>
+<header>
+<h1>♟ AJEDREZ MAESTRO IA</h1>
+<p>Juega · Analiza · Aprende · Mejora tu estrategia</p>
+</header>
+
+<main>
+<section class="panel">
+<div class="topline"><span id="turn">Blancas juegan</span><span id="material">Partida nueva</span></div>
+<div id="board" class="board" role="group" aria-label="Tablero de ajedrez"></div>
+<div class="controls">
+<button id="new" class="primary">Nueva partida</button>
+<button id="undo">↶ Retroceder</button>
+<button id="redo">↷ Adelantar</button>
+<button id="flip">Girar tablero</button>
+</div>
+<div class="controls">
+<label for="side" class="small">Jugar con</label>
+<select id="side"><option value="w">Blancas</option><option value="b">Negras</option></select>
+<label for="difficulty" class="small">Nivel</label>
+<select id="difficulty">
+<option value="8">Principiante</option>
+<option value="12">Intermedio</option>
+<option value="16" selected>Avanzado</option>
+<option value="20">Experto</option>
+<option value="24">Máximo análisis</option>
+</select>
+</div>
+<div class="controls">
+<button id="hint">💡 Mejor jugada</button>
+<button id="analyze">Analizar posición</button>
+<button id="auto">▶ Reproducir partida</button>
+</div>
+<div class="stat"><div class="small">Evaluación orientativa</div><div id="eval">—</div><div id="engineStatus">Cargando motor de ajedrez...</div></div>
+<p class="small">Selecciona una pieza y luego su casilla de destino. También puedes seleccionar las casillas con el teclado o tocarlas en el celular.</p>
+</section>
+
+<section class="panel">
+<h2>Entrenador personal</h2>
+<div id="status">Preparando tablero...</div>
+<div class="stat"><h3>Explicación de la jugada</h3><div id="coach">Cuando realices una jugada, el entrenador analizará la posición y buscará continuaciones posibles.</div></div>
+<div class="stat"><h3>Variación recomendada</h3><div id="variation" class="small">Todavía no hay variantes.</div></div>
+<div class="stat"><h3>Historial de movimientos</h3><div id="moves"></div></div>
+<div class="controls">
+<button id="copy">Copiar partida PGN</button>
+<button id="restart">Volver al inicio</button>
+</div>
+<div class="stat">
+<h3>Qué debes aprender</h3>
+<div class="small">• Desarrollo y control del centro.<br>
+• Seguridad del rey y enroque.<br>
+• Tácticas: clavadas, ataques dobles y piezas indefensas.<br>
+• Planes de ataque, defensa y finales.<br>
+• Comparar la posición actual con alternativas calculadas por el motor.</div>
+</div>
+</section>
+</main>
+<footer>Motor de análisis externo · Se necesita Internet · Las evaluaciones dependen del motor y de la profundidad de búsqueda.</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<script>
+(function(){
+"use strict";
+const $=id=>document.getElementById(id);
+if(typeof Chess==="undefined"){
+ $("status").textContent="No se pudo cargar la biblioteca de ajedrez. Comprueba tu conexión y recarga la página.";
+ $("engineStatus").textContent="Biblioteca no disponible.";
+ return;
+}
+const game=new Chess();
+const glyph={
+w:{k:"♔",q:"♕",r:"♖",b:"♗",n:"♘",p:"♙"},
+b:{k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟"}
+};
+let selected=null,legal=[],orientation="w",history=[],cursor=0;
+let lastMove=null,engine=null,engineReady=false,engineBusy=false;
+let task=null,taskId=0,engineEval=null,lastBest=null,autoTimer=null;
+const initialFen=game.fen();
+
+function setStatus(s){$("status").textContent=s}
+function setCoach(s){$("coach").textContent=s}
+function setEngineStatus(s){$("engineStatus").textContent=s}
+function files(){return orientation==="w"?["a","b","c","d","e","f","g","h"]:["h","g","f","e","d","c","b","a"]}
+function ranks(){return orientation==="w"?[8,7,6,5,4,3,2,1]:[1,2,3,4,5,6,7,8]}
+function squareColor(s){let f=s.charCodeAt(0)-97,r=Number(s[1]);return (f+r)%2===0?"dark":"light"}
+function render(){
+ const board=$("board");board.innerHTML="";
+ const b=game.board(),fs=files(),rs=ranks();
+ rs.forEach(r=>fs.forEach(f=>{
+  const sq=f+r,p=game.get(sq),el=document.createElement("button");
+  el.type="button";el.className="square "+squareColor(sq);
+  if(selected===sq)el.classList.add("selected");
+  if(lastMove&&(lastMove.from===sq||lastMove.to===sq))el.classList.add("last");
+  if(legal.some(m=>m.to===sq))el.classList.add("hint");
+  el.setAttribute("aria-label",sq+(p?" "+(p.color==="w"?"blanca ":"negra ")+p.type:" vacío"));
+  if(p)el.textContent=glyph[p.color][p.type];
+  if((orientation==="w"&&r===1)||(orientation==="b"&&r===8)){
+   const c=document.createElement("span");c.className="coord";c.textContent=f;el.appendChild(c);
+  }
+  if((orientation==="w"&&f==="a")||(orientation==="b"&&f==="h")){
+   const c=document.createElement("span");c.className="coord";c.style.left="auto";c.style.right="3px";c.style.top="2px";c.textContent=r;el.appendChild(c);
+  }
+  el.addEventListener("click",()=>clickSquare(sq));
+  board.appendChild(el);
+ }));
+ updateInfo();renderMoves();
+}
+function updateInfo(){
+ const turn=game.turn()==="w"?"Blancas":"Negras";
+ $("turn").textContent=game.game_over()?"Partida terminada":turn+" juegan";
+ $("material").textContent=game.in_check()?"¡Jaque!":"";
+ if(game.in_checkmate())setStatus("Jaque mate. Ganan "+(game.turn()==="w"?"las negras.":"las blancas."));
+ else if(game.in_draw())setStatus("Tablas: la partida ha terminado en empate.");
+ else if(game.in_check())setStatus("Jaque: debes responder a la amenaza contra tu rey.");
+ else setStatus("Turno de "+turn.toLowerCase()+".");
+}
+function renderMoves(){
+ const box=$("moves");box.innerHTML="";
+ history.forEach((h,i)=>{
+  const btn=document.createElement("button");btn.className="move"+(i===cursor-1?" active":"");
+  btn.textContent=(i%2===0?Math.floor(i/2)+1+". ":"")+h.san;
+  btn.title="Ir a la jugada "+(i+1);
+  btn.onclick=()=>goTo(i+1);
+  box.appendChild(btn);
+ });
+ $("undo").disabled=cursor===0;
+ $("redo").disabled=cursor===history.length;
+}
+function clickSquare(sq){
+ if(engineBusy||game.game_over())return;
+ const human=$("side").value;
+ if(game.turn()!==human){setStatus("Es el turno del motor. Espera su respuesta.");return;}
+ if(selected){
+  let move=null;
+  const opts={from:selected,to:sq,promotion:"q"};
+  move=game.move(opts);
+  if(move){
+   history=history.slice(0,cursor);history.push(move);cursor++;
+   lastMove={from:move.from,to:move.to};selected=null;legal=[];
+   render();setCoach("Tu jugada: "+move.san+". Analizando la posición para buscar continuaciones y amenazas...");
+   analyzeAfterHuman(move);
+   return;
+  }
+ }
+ const p=game.get(sq);
+ if(p&&p.color===game.turn()){
+  selected=sq;legal=game.moves({square:sq,verbose:true});render();
+ }else{selected=null;legal=[];render();}
+}
+function goTo(n){
+ stopAuto();game.reset();
+ for(let i=0;i<n;i++)game.move(history[i]);
+ cursor=n;selected=null;legal=[];
+ const h=history[n-1];lastMove=h?{from:h.from,to:h.to}:null;
+ render();setCoach(n===0?"Posición inicial.": "Revisando la jugada "+n+". Pulsa «Analizar posición» para solicitar un análisis nuevo.");
+}
+function reset(){
+ stopAuto();game.reset();history=[];cursor=0;selected=null;legal=[];lastMove=null;engineEval=null;lastBest=null;
+ $("eval").textContent="—";$("variation").textContent="Todavía no hay variantes.";
+ setCoach("Nueva partida. Desarrolla tus piezas, lucha por el centro y protege tu rey.");
+ render();
+ if($("side").value==="b")engineMove();
+}
+function initEngine(){
+ try{
+  const url="https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js";
+  engine=new Worker(url);
+  engine.onmessage=e=>handleEngine(String(e.data||""));
+  engine.onerror=()=>{
+   engineReady=false;engineBusy=false;
+   setEngineStatus("No se pudo iniciar Stockfish. Comprueba Internet o el bloqueo de workers externos.");
+   if(task){task.resolve(null);task=null;}
+  };
+  engine.postMessage("uci");
+ }catch(e){setEngineStatus("El navegador no pudo iniciar el motor: "+e.message);}
+}
+let uciOk=false;
+function handleEngine(line){
+ if(line==="uciok"){
+  uciOk=true;engine.postMessage("isready");return;
+ }
+ if(line==="readyok"){
+  engineReady=true;setEngineStatus("Stockfish conectado. Preparado para analizar.");
+  if(task)runTask();
+  return;
+ }
+ if(!task)return;
+ const t=task;
+ if(line.startsWith("info ")){
+  const m=line.match(/\bdepth (\d+)/);if(m)t.depth=Number(m[1]);
+  const sc=line.match(/\bscore (cp|mate) (-?\d+)/);
+  if(sc){
+   t.scoreType=sc[1];t.score=Number(sc[2]);
+   const whiteScore=game.turn()==="w"?t.score:-t.score;
+   $("eval").textContent=sc[1]==="mate"?"Mate en "+Math.abs(t.score):((whiteScore/100)>0?"+":"")+(whiteScore/100).toFixed(2);
+  }
+  const pv=line.match(/\bpv (.+)$/);
+  if(pv)t.pv=pv[1];
+ }
+ if(line.startsWith("bestmove")){
+  const m=line.match(/^bestmove (\S+)/);
+  t.best=m&&m[1]!=="(none)"?m[1]:null;
+  task=null;engineBusy=false;
+  t.resolve(t);
+ }
+}
+function runTask(){
+ if(!engine||!engineReady||!task)return;
+ engineBusy=true;
+ const t=task;
+ t.fen=game.fen();t.best=null;t.pv="";t.score=null;t.depth=0;
+ engine.postMessage("ucinewgame");
+ engine.postMessage("position fen "+t.fen);
+ engine.postMessage("go depth "+Number($("difficulty").value));
+ setEngineStatus("Analizando posición… profundidad objetivo "+$("difficulty").value+".");
+}
+function search(){
+ return new Promise(resolve=>{
+  if(!engine||!engineReady){resolve(null);return;}
+  if(task){task.resolve(null);task=null;engineBusy=false;}
+  task={resolve:resolve};runTask();
+ });
+}
+function sanFromUci(uci){
+ if(!uci||uci.length<4)return null;
+ const from=uci.slice(0,2),to=uci.slice(2,4),promo=uci[4];
+ const copy=new Chess(game.fen());
+ const m=copy.move({from,to,promotion:promo||"q"});
+ return m?m.san:null;
+}
+function explainResult(result,move){
+ if(!result){
+  setCoach("La jugada fue legal, pero el motor no está disponible. Comprueba la conexión para obtener un análisis táctico.");
+  return;
+ }
+ const best=result.best, san=sanFromUci(best);
+ lastBest=best;
+ let text="Tu jugada: "+move.san+".\n\n";
+ text+="El motor ha calculado una continuación desde la posición actual.";
+ if(san)text+="\nUna respuesta candidata del motor es "+san+".";
+ if(result.depth)text+="\nProfundidad alcanzada: "+result.depth+".";
+ text+="\n\nImportante: este análisis se realiza después de tu movimiento. Para clasificar con precisión tu jugada como excelente, imprecisión, error o blunder, hay que comparar la evaluación de la posición anterior con la de la posición posterior. Una sola evaluación no basta para afirmar con seguridad que tu movimiento fue un error.";
+ text+="\n\nPlan práctico: revisa las amenazas del rival, las piezas que quedan sin defender, los jaques, las capturas y las amenazas directas antes de elegir la siguiente jugada.";
+ setCoach(text);
+ $("variation").textContent=(san?"Continuación sugerida: "+san+". ":"")+"Variante calculada: "+(result.pv||"no disponible")+".";
+}
+async function analyzeAfterHuman(move){
+ if(!engineReady){setCoach("Tu jugada "+move.san+" es legal. El motor todavía no está listo; vuelve a pulsar Analizar posición cuando se conecte.");return;}
+ const result=await search();
+ if(!result)return;
+ explainResult(result,move);
+ if(game.game_over()){render();return;}
+ if(game.turn()!==$("side").value){
+  const best=result.best;
+  if(best){
+   const m=game.move({from:best.slice(0,2),to:best.slice(2,4),promotion:best[4]||"q"});
+   if(m){
+    history=history.slice(0,cursor);history.push(m);cursor++;
+    lastMove={from:m.from,to:m.to};render();
+    setCoach($("coach").textContent+"\n\nRespuesta del motor: "+m.san+". Se analizará la posición resultante.");
+    if(!game.game_over()){
+     const next=await search();
+     if(next){
+      $("variation").textContent="Respuesta del motor: "+m.san+". Profundidad: "+next.depth+". Variante: "+(next.pv||"no disponible")+".";
+     }
+    }
+   }
+  }
+ }
+}
+async function engineMove(){
+ if(game.game_over()||!engineReady||engineBusy)return;
+ if(game.turn()===$("side").value)return;
+ const r=await search();if(!r||!r.best)return;
+ const m=game.move({from:r.best.slice(0,2),to:r.best.slice(2,4),promotion:r.best[4]||"q"});
+ if(m){history=history.slice(0,cursor);history.push(m);cursor++;lastMove={from:m.from,to:m.to};render();setCoach("El motor juega "+m.san+". Pulsa Analizar posición para explorar la posición.");}
+}
+$("new").onclick=reset;
+$("restart").onclick=()=>goTo(0);
+$("undo").onclick=()=>goTo(Math.max(0,cursor-1));
+$("redo").onclick=()=>goTo(Math.min(history.length,cursor+1));
+$("flip").onclick=()=>{orientation=orientation==="w"?"b":"w";render()};
+$("side").onchange=reset;
+$("hint").onclick=async()=>{
+ if(!engineReady){setCoach("El motor todavía no está disponible.");return;}
+ if(game.turn()!==$("side").value){setCoach("Espera tu turno para solicitar una sugerencia.");return;}
+ setCoach("Buscando una continuación fuerte...");
+ const r=await search();
+ if(r){const san=sanFromUci(r.best);setCoach("Sugerencia del motor: "+(san||"no disponible")+".\nProfundidad: "+r.depth+".\nVariante: "+(r.pv||"no disponible")+".\n\nUna sugerencia del motor no sustituye la comprensión del plan estratégico: comprueba qué amenaza crea, qué piezas defiende y cómo cambia la seguridad de tu rey.");$("variation").textContent=r.pv||"No se encontró una variante.";}
+};
+$("analyze").onclick=async()=>{
+ if(!engineReady){setCoach("El motor todavía no está disponible.");return;}
+ setCoach("Analizando la posición actual...");
+ const r=await search();
+ if(r){
+  const san=sanFromUci(r.best);
+  setCoach("Análisis de la posición actual.\nMejor continuación encontrada: "+(san||"no disponible")+".\nProfundidad: "+r.depth+".\nVariante: "+(r.pv||"no disponible")+".\n\nExamina las amenazas, las capturas, los jaques y la seguridad de ambos reyes antes de decidir.");
+  $("variation").textContent=r.pv||"No hay variante disponible.";
+ }
+};
+$("copy").onclick=async()=>{
+ const pgn=game.pgn();
+ try{await navigator.clipboard.writeText(pgn);setStatus("PGN copiado.");}
+ catch(e){setCoach("No se pudo acceder al portapapeles. Selecciona y copia este PGN:\n"+pgn);}
+};
+function stopAuto(){if(autoTimer){clearInterval(autoTimer);autoTimer=null;}$("auto").textContent="▶ Reproducir partida";}
+$("auto").onclick=()=>{
+ if(autoTimer){stopAuto();return;}
+ $("auto").textContent="⏸ Pausar";
+ autoTimer=setInterval(()=>{
+  if(cursor>=history.length){stopAuto();return;}
+  goTo(cursor+1);
+ },900);
+};
+render();initEngine();
+})();
+</script>
+</body>
+</html>
